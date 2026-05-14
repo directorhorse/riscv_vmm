@@ -1,0 +1,11 @@
+u-boot-qemu
+libslirp-dev
+ninja
+bison
+flex
+libssl-dev
+libgnutls28-dev
+parted
+dosfstools
+cpio
+libncurses5-dev

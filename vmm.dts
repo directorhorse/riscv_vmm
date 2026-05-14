@@ -1,0 +1,70 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "riscv-virtio";
+	model = "KVM-VMM";
+
+	chosen {
+		bootargs = "earlycon=sbi console=hvc0 root=/dev/vda2 rw rootwait";
+		stdout-path = "/soc/serial@10000000";
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x40000000>;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <10000000>;
+
+		cpu@0 {
+			compatible = "riscv";
+			device_type = "cpu";
+			reg = <0>;
+			mmu-type = "riscv,sv39";
+			riscv,isa = "rv64imafdcsu";
+			status = "okay";
+
+		cpu_intc: interrupt-controller {
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			compatible = "riscv,cpu-intc";
+		};
+		};
+	};
+
+	plic: plic@c000000 {
+		compatible = "riscv,plic0";
+		reg = <0x0 0x0c000000 0x0 0x04000000>;
+		interrupts-extended = <&cpu_intc 11 &cpu_intc 9>;
+		interrupt-controller;
+		#address-cells = <0>;
+		#interrupt-cells = <1>;
+		riscv,ndev = <32>;
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		ranges;
+
+		serial@10000000 {
+			compatible = "ns16550a";
+			reg = <0x0 0x10000000 0x0 0x100>;
+			clock-frequency = <1843200>;
+            current-speed = <115200>;
+		};
+
+		virtio_mmio@10001000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10001000 0x0 0x1000>;
+			interrupt-parent = <&plic>;
+			interrupts = <2>;
+		};
+	};
+};

@@ -1,0 +1,12 @@
+.kilo
+.vscode
+build
+output
+qemu_config/*
+u-boot
+u-boot.bin
+vmm.dtb
+linux
+busybox*
+rootfs
+*.gz
