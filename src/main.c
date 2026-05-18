@@ -322,7 +322,10 @@ int main(int argc, char *argv[]) {
     if (disk_file) {
         struct virtio_blk_device *blk = virtio_blk_init(disk_file);
         if (blk) {
-            uint32_t host_features[2] = { (1 << 6), 0 };
+            uint32_t host_features[2] = {
+                VIRTIO_BLK_F_BLK_SIZE | VIRTIO_BLK_F_FLUSH,
+                1U << (VIRTIO_F_VERSION_1 - 32),
+            };
             virtio_blk_mmio = virtio_mmio_init(
                 VIRTIO_BLK_MMIO_BASE,
                 (void *)(uintptr_t)init_args.mem,

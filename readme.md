@@ -22,7 +22,7 @@ x86 host
 - 将 U-Boot 加载到 `0x80200000`，并从该地址启动 vCPU。
 - 模拟 `ns16550a` 串口，地址为 `0x10000000`。
 - 模拟简化版 PLIC，用于给 guest 投递外部中断。
-- 模拟 virtio-mmio block 设备，地址为 `0x10001000`，中断号为 `2`。
+- 模拟 modern virtio-mmio block 设备，地址为 `0x10001000`，中断号为 `2`。
 - 支持 virtio-blk 的读、写和 flush 请求，后端为宿主文件形式的磁盘镜像。
 
 ## 目录结构
@@ -48,7 +48,7 @@ x86 host
 
 - `src/vmm.c`：KVM VM/vCPU 创建、guest 内存映射、镜像加载、寄存器初始化。
 - `src/main.c`：命令行参数解析、主运行循环、MMIO exit 分发、UART 和 PLIC 模拟。
-- `src/virtio_mmio.c`：virtio-mmio 寄存器和 virtqueue 处理。
+- `src/virtio_mmio.c`：modern virtio-mmio 寄存器和 virtqueue 处理。
 - `src/virtio_blk.c`：virtio-blk 后端，实现对磁盘镜像的 `pread`、`pwrite` 和 `fsync`。
 - `vmm.dts`：内层 guest 使用的设备树。
 - `Makefile`：编译 VMM、生成 DTB、启动外层 QEMU 环境。
@@ -246,4 +246,3 @@ VMM 会打印 virtio-mmio 和 virtio-blk 的关键日志，例如：
 ### 看不到 `/dev/kvm`
 
 说明外层 RISC-V Linux 没有启用 KVM，或 QEMU 没有提供 H 扩展/相关虚拟化能力。需要检查外层 QEMU 参数和外层 Linux 内核配置。可以尝试sudo modprobe kvm，如果没有效果，可能是QEMU版本或RISC-V Linux镜像存在问题。
-

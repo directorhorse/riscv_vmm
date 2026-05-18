@@ -7,7 +7,7 @@
 	model = "KVM-VMM";
 
 	chosen {
-		bootargs = "earlycon=sbi console=hvc0 root=/dev/vda2 rw rootwait";
+		bootargs = "earlycon=sbi console=ttyS0,115200 root=/dev/vda2 rw rootwait";
 		stdout-path = "/soc/serial@10000000";
 	};
 
