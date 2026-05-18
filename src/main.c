@@ -48,14 +48,14 @@ static void term_raw(void) {
 }
 
 static void uart_update_irq(struct init_struct *init) {
-    int pending = 0;
-    if ((uart.ier & 0x04) && (uart.lsr & 0x1e)) pending = 1;
-    if (!pending && (uart.ier & 0x01) && (uart.lsr & 0x01)) pending = 1;
-    if (!pending && (uart.ier & 0x02) && !uart.thre_ack) pending = 1;
-    if (!pending && (uart.ier & 0x08) && (uart.msr & 0x0f)) pending = 1;
+    // int pending = 0;
+    // if ((uart.ier & 0x04) && (uart.lsr & 0x1e)) pending = 1;
+    // if (!pending && (uart.ier & 0x01) && (uart.lsr & 0x01)) pending = 1;
+    // if (!pending && (uart.ier & 0x02) && !uart.thre_ack) pending = 1;
+    // if (!pending && (uart.ier & 0x08) && (uart.msr & 0x0f)) pending = 1;
 
-    struct kvm_irq_level irq = { .irq = 1, .level = pending ? 1 : 0 };
-    ioctl(init->vm_fd, KVM_IRQ_LINE, &irq);
+    // struct kvm_irq_level irq = { .irq = 1, .level = pending ? 1 : 0 };
+    // ioctl(init->vm_fd, KVM_IRQ_LINE, &irq);
 }
 
 static void uart_write(uint8_t reg, uint8_t val, struct init_struct *init) {
