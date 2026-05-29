@@ -4,7 +4,7 @@ CFLAGS = -g -Wall -Iinclude
 BUILD = build
 SRC = src
 OUTPUT = output
-OBJ = $(BUILD)/vmm.o $(BUILD)/main.o $(BUILD)/virtio_mmio.o $(BUILD)/virtio_blk.o
+OBJ = $(BUILD)/vmm.o $(BUILD)/main.o $(BUILD)/virtio_mmio.o $(BUILD)/virtio_blk.o $(BUILD)/virtio_gpu.o
 
 QEMU = qemu-system-riscv64
 QEMU_CONFIG = qemu_config
@@ -18,6 +18,8 @@ QEMU_FLAGS = \
 	-kernel /usr/lib/u-boot/qemu-riscv64_smode/u-boot.bin \
 	-netdev user,id=net0,hostfwd=tcp::2222-:22 \
 	-device virtio-net-device,netdev=net0 \
+	-display gtk \
+	-device virtio-gpu \
 	-drive file=$(IMG),format=qcow2,if=virtio \
 	-append "root=/dev/vda1 rw earlycon=sbi console=ttyS0"
 
@@ -35,7 +37,7 @@ $(BUILD)/vmm.o: $(SRC)/vmm.c include/vmm.h include/kvm_helpers.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $(SRC)/vmm.c -o $@
 
-$(BUILD)/main.o: $(SRC)/main.c include/vmm.h include/virtio_mmio.h include/virtio_blk.h
+$(BUILD)/main.o: $(SRC)/main.c include/vmm.h include/virtio_mmio.h include/virtio_blk.h include/virtio_gpu.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $(SRC)/main.c -o $@
 
@@ -46,6 +48,10 @@ $(BUILD)/virtio_mmio.o: $(SRC)/virtio_mmio.c include/virtio_mmio.h
 $(BUILD)/virtio_blk.o: $(SRC)/virtio_blk.c include/virtio_blk.h include/virtio_mmio.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $(SRC)/virtio_blk.c -o $@
+
+$(BUILD)/virtio_gpu.o: $(SRC)/virtio_gpu.c include/virtio_gpu.h include/virtio_mmio.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c $(SRC)/virtio_gpu.c -o $@
 
 dtb:
 	@mkdir -p $(OUTPUT)

@@ -8,26 +8,30 @@
 #include <errno.h>
 #include <sys/types.h>
 
-static void virtio_blk_notify(void *arg);
+static void virtio_blk_notify(void *arg, uint32_t queue_index);
 
 struct virtio_blk_ctx {
 	struct virtio_mmio_dev *mmio;
 	struct virtio_blk_device blk;
 };
 
-static void virtio_blk_notify(void *arg)
+static void virtio_blk_notify(void *arg, uint32_t queue_index)
 {
 	struct virtio_blk_ctx *ctx = (struct virtio_blk_ctx *)arg;
 	struct virtio_mmio_dev *mmio = ctx->mmio;
 	struct virtio_blk_device *blk = &ctx->blk;
 
-	uint16_t avail_idx;
-	uint16_t *ring;
-	uint16_t ring_size;
-	int num_new = virtio_mmio_get_queue_avail(mmio, &avail_idx, &ring, &ring_size);
+	uint16_t avail_idx = 0;
+	uint16_t *ring = NULL;
+	uint16_t ring_size = 0;
+	if (queue_index != 0)
+		return;
 
-	printf("[VMM] virtio-blk notify: num_new=%d avail_idx=%u ring_size=%u\n",
-	       num_new, avail_idx, ring_size);
+	int num_new = virtio_mmio_get_queue_avail(mmio, queue_index, &avail_idx,
+						  &ring, &ring_size);
+
+	// printf("[VMM] virtio-blk notify: num_new=%d avail_idx=%u ring_size=%u\n",
+	//        num_new, avail_idx, ring_size);
 	fflush(stdout);
 
 	if (num_new <= 0)
@@ -41,11 +45,13 @@ static void virtio_blk_notify(void *arg)
 		int status = VIRTIO_BLK_S_IOERR;
 		uint32_t used_len = 0;
 
-		if (virtio_mmio_get_desc(mmio, desc_idx, &addr, &len, &flags, &next) < 0)
+		if (virtio_mmio_get_desc(mmio, queue_index, desc_idx,
+					 &addr, &len, &flags, &next) < 0)
 			goto add_used;
 
 		struct virtio_blk_outhdr hdr;
-		if (virtio_mmio_read_desc_buf(mmio, desc_idx, &hdr, sizeof(hdr)) < 0)
+		if (virtio_mmio_read_desc_buf(mmio, queue_index, desc_idx,
+					      &hdr, sizeof(hdr)) < 0)
 			goto add_used;
 
 		uint16_t data_desc = next;
@@ -56,8 +62,9 @@ static void virtio_blk_notify(void *arg)
 		uint32_t data_len;
 		uint16_t data_flags, data_next;
 
-		if (virtio_mmio_get_desc(mmio, data_desc, &data_addr, &data_len,
-					 &data_flags, &data_next) < 0)
+		if (virtio_mmio_get_desc(mmio, queue_index, data_desc,
+					 &data_addr, &data_len, &data_flags,
+					 &data_next) < 0)
 			goto add_used;
 
 		uint16_t status_desc = data_next;
@@ -81,7 +88,8 @@ static void virtio_blk_notify(void *arg)
 				goto write_status;
 			}
 
-			virtio_mmio_write_desc_buf(mmio, data_desc, buf, data_len);
+			virtio_mmio_write_desc_buf(mmio, queue_index, data_desc,
+						   buf, data_len);
 			free(buf);
 			status = VIRTIO_BLK_S_OK;
 			used_len = data_len + 1;
@@ -90,7 +98,8 @@ static void virtio_blk_notify(void *arg)
 			if (!buf)
 				goto write_status;
 
-			virtio_mmio_read_desc_buf(mmio, data_desc, buf, data_len);
+			virtio_mmio_read_desc_buf(mmio, queue_index, data_desc,
+						  buf, data_len);
 			ssize_t wr = pwrite(blk->fd, buf, data_len, (off_t)offset);
 			free(buf);
 
@@ -110,14 +119,15 @@ static void virtio_blk_notify(void *arg)
 		}
 
 write_status:
-		printf("[VMM] virtio-blk request: desc=%u type=%u sector=%llu len=%u used_len=%u status=%d\n",
-		       desc_idx, hdr.type, (unsigned long long)hdr.sector,
-		       data_len, used_len, status);
+		// printf("[VMM] virtio-blk request: desc=%u type=%u sector=%llu len=%u used_len=%u status=%d\n",
+		//        desc_idx, hdr.type, (unsigned long long)hdr.sector,
+		//        data_len, used_len, status);
 		fflush(stdout);
-		virtio_mmio_write_desc_buf(mmio, status_desc, &status, 1);
+		virtio_mmio_write_desc_buf(mmio, queue_index, status_desc,
+					   &status, 1);
 
 	add_used:
-		virtio_mmio_add_used(mmio, desc_idx, used_len);
+		virtio_mmio_add_used(mmio, queue_index, desc_idx, used_len);
 	}
 
 done:
@@ -132,8 +142,8 @@ struct virtio_blk_device *virtio_blk_init(const char *image_path)
 
 	int fd = open(image_path, O_RDWR);
 	if (fd < 0) {
-		fprintf(stderr, "[VMM] failed to open disk image %s: %d\n",
-			image_path, errno);
+		// fprintf(stderr, "[VMM] failed to open disk image %s: %d\n",
+		// 	image_path, errno);
 		free(ctx);
 		return NULL;
 	}
@@ -158,8 +168,8 @@ struct virtio_blk_device *virtio_blk_init(const char *image_path)
 	ctx->blk.config.size_max = 0;
 	ctx->blk.config.seg_max = 128 - 2;
 
-	printf("[VMM] virtio-blk: image=%s, size=%ld bytes, capacity=%lu sectors\n",
-	       image_path, (long)size, (unsigned long)ctx->blk.config.capacity);
+	// printf("[VMM] virtio-blk: image=%s, size=%ld bytes, capacity=%lu sectors\n",
+	//        image_path, (long)size, (unsigned long)ctx->blk.config.capacity);
 
 	ctx->mmio = NULL;
 	return &ctx->blk;
@@ -200,5 +210,5 @@ void virtio_blk_handle_notify(struct virtio_mmio_dev *mmio, struct virtio_blk_de
 		ctx->mmio = mmio;
 		virtio_mmio_set_notify_cb(mmio, virtio_blk_notify, ctx);
 	}
-	virtio_blk_notify(ctx);
+	virtio_blk_notify(ctx, 0);
 }

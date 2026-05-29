@@ -1,6 +1,7 @@
 #include "vmm.h"
 #include "virtio_mmio.h"
 #include "virtio_blk.h"
+#include "virtio_gpu.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/kvm.h>
@@ -18,6 +19,11 @@
 
 #define VIRTIO_BLK_MMIO_BASE 0x10001000
 #define VIRTIO_BLK_IRQ 2
+#define VIRTIO_GPU_MMIO_BASE 0x10002000
+#define VIRTIO_GPU_IRQ 3
+#define VIRTIO_GPU_WIDTH 1024
+#define VIRTIO_GPU_HEIGHT 768
+#define MAX_VIRTIO_MMIO_DEVS 8
 
 #define UART_RX_FIFO_SIZE 256
 
@@ -144,8 +150,15 @@ static void uart_rx_feed(struct init_struct *init) {
     uart_update_irq(init);
 }
 
-static struct virtio_mmio_dev *virtio_blk_mmio;
+static struct virtio_mmio_dev *virtio_mmio_devs[MAX_VIRTIO_MMIO_DEVS];
+static int virtio_mmio_dev_count;
 static uint32_t plic_pending;
+
+static void register_virtio_mmio_dev(struct virtio_mmio_dev *dev) {
+    if (!dev || virtio_mmio_dev_count >= MAX_VIRTIO_MMIO_DEVS)
+        return;
+    virtio_mmio_devs[virtio_mmio_dev_count++] = dev;
+}
 
 static uint32_t mmio_read_u32(uint8_t *data, uint32_t len) {
     uint32_t val = 0;
@@ -191,11 +204,12 @@ static void handle_mmio(struct kvm_run *run, struct init_struct *init) {
         return;
     }
 
-    if (virtio_blk_mmio &&
-        virtio_mmio_handle_access(virtio_blk_mmio, addr,
-                                  run->mmio.data, run->mmio.len,
-                                  run->mmio.is_write))
-        return;
+    for (int i = 0; i < virtio_mmio_dev_count; i++) {
+        if (virtio_mmio_handle_access(virtio_mmio_devs[i], addr,
+                                      run->mmio.data, run->mmio.len,
+                                      run->mmio.is_write))
+            return;
+    }
 
     if (addr >= 0x0c000000 && addr < 0x0c200000) {
         if (run->mmio.len > 8) run->mmio.len = 8;
@@ -217,10 +231,10 @@ static void handle_mmio(struct kvm_run *run, struct init_struct *init) {
             uint32_t irq = mmio_read_u32(run->mmio.data, run->mmio.len);
             if (irq < 32)
                 plic_pending &= ~(1U << irq);
-            if (irq == VIRTIO_BLK_IRQ && !(plic_pending & (1U << irq)))
+            if (!plic_pending)
                 plic_set_irq(init, irq, 0);
-            printf("[VMM] plic complete: addr=0x%lx irq=%u pending=0x%x\n",
-                   addr, irq, plic_pending);
+            // printf("[VMM] plic complete: addr=0x%lx irq=%u pending=0x%x\n",
+            //        addr, irq, plic_pending);
             fflush(stdout);
         } else {
             uint32_t irq = 0;
@@ -229,10 +243,10 @@ static void handle_mmio(struct kvm_run *run, struct init_struct *init) {
                 plic_pending &= ~(1U << irq);
             }
             mmio_write_u32(run->mmio.data, run->mmio.len, irq);
-            if (irq == VIRTIO_BLK_IRQ && !(plic_pending & (1U << irq)))
+            if (!plic_pending)
                 plic_set_irq(init, irq, 0);
-            printf("[VMM] plic claim: addr=0x%lx irq=%u pending=0x%x\n",
-                   addr, irq, plic_pending);
+            // printf("[VMM] plic claim: addr=0x%lx irq=%u pending=0x%x\n",
+            //        addr, irq, plic_pending);
             fflush(stdout);
         }
         return;
@@ -326,21 +340,52 @@ int main(int argc, char *argv[]) {
                 VIRTIO_BLK_F_BLK_SIZE | VIRTIO_BLK_F_FLUSH,
                 1U << (VIRTIO_F_VERSION_1 - 32),
             };
-            virtio_blk_mmio = virtio_mmio_init(
+            struct virtio_mmio_dev *blk_mmio = virtio_mmio_init(
                 VIRTIO_BLK_MMIO_BASE,
                 (void *)(uintptr_t)init_args.mem,
                 0x80000000,
                 init_args.vcpu_fd,
                 2,
                 0,
+                VIRTIO_BLK_IRQ,
                 host_features,
                 128,
+                1,
                 virtio_blk_get_config(blk),
                 sizeof(struct virtio_blk_config));
-            if (virtio_blk_mmio) {
-                virtio_mmio_set_plic_pending(virtio_blk_mmio, &plic_pending);
-                virtio_blk_bind_mmio(blk, virtio_blk_mmio);
+            if (blk_mmio) {
+                virtio_mmio_set_plic_pending(blk_mmio, &plic_pending);
+                virtio_blk_bind_mmio(blk, blk_mmio);
+                register_virtio_mmio_dev(blk_mmio);
             }
+        }
+    }
+
+    struct virtio_gpu_device *gpu = virtio_gpu_init(VIRTIO_GPU_WIDTH,
+                                                    VIRTIO_GPU_HEIGHT);
+    if (gpu) {
+        uint32_t gpu_features[2] = { 0, 0 };
+        struct virtio_mmio_dev *gpu_mmio = virtio_mmio_init(
+            VIRTIO_GPU_MMIO_BASE,
+            (void *)(uintptr_t)init_args.mem,
+            0x80000000,
+            init_args.vcpu_fd,
+            VIRTIO_GPU_DEVICE_ID,
+            0,
+            VIRTIO_GPU_IRQ,
+            gpu_features,
+            128,
+            VIRTIO_GPU_NUM_QUEUES,
+            virtio_gpu_get_config(gpu),
+            sizeof(struct virtio_gpu_config));
+        if (gpu_mmio) {
+            virtio_mmio_set_plic_pending(gpu_mmio, &plic_pending);
+            virtio_gpu_bind_mmio(gpu, gpu_mmio);
+            register_virtio_mmio_dev(gpu_mmio);
+            printf("[VMM] virtio-gpu enabled: %ux%u base=0x%x irq=%d\n",
+                   VIRTIO_GPU_WIDTH, VIRTIO_GPU_HEIGHT,
+                   VIRTIO_GPU_MMIO_BASE, VIRTIO_GPU_IRQ);
+            fflush(stdout);
         }
     }
 

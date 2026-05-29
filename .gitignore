@@ -1,5 +1,7 @@
 .kilo
 .vscode
+.agents
+.codex
 build
 output
 qemu_config/*
@@ -10,3 +12,5 @@ linux
 busybox*
 rootfs
 *.gz
+disk.img
+Image

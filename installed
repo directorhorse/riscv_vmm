@@ -9,3 +9,7 @@ parted
 dosfstools
 cpio
 libncurses5-dev
+libsdl2-dev
+libgtk-3-dev
+libvirglrenderer-dev
+mesa-utils
