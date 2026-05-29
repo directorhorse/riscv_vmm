@@ -1,6 +1,6 @@
 # RISC-V KVM VMM
 
-这是一个教学/实验性质的 RISC-V 虚拟机监控器（VMM）。项目通过 Linux KVM 接口创建一个内层 RISC-V 虚拟机，加载 U-Boot 和设备树，并为 guest 提供最小可用的串口、PLIC 和 virtio-mmio 块设备模拟。
+这是一个教学/实验性质的 RISC-V 虚拟机监控器（VMM）。项目通过 Linux KVM 接口创建一个内层 RISC-V 虚拟机，加载 U-Boot 和设备树，并为 guest 提供最小可用的串口、PLIC 和 virtio-mmio 块设备与GPU模拟。
 
 典型运行环境是：
 
@@ -23,6 +23,7 @@ x86 host
 - 模拟 `ns16550a` 串口，地址为 `0x10000000`。
 - 模拟简化版 PLIC，用于给 guest 投递外部中断。
 - 模拟 modern virtio-mmio block 设备，地址为 `0x10001000`，中断号为 `2`。
+- virtio-gpu，地址为0x10002000
 - 支持 virtio-blk 的读、写和 flush 请求，后端为宿主文件形式的磁盘镜像。
 
 ## 目录结构
@@ -35,11 +36,13 @@ x86 host
 ├── include/
 │   ├── kvm_helpers.h
 │   ├── virtio_blk.h
+    |── virtio_gpu.h
 │   ├── virtio_mmio.h
 │   └── vmm.h
 └── src/
     ├── main.c
     ├── virtio_blk.c
+    ├── virtio_gpu.c
     ├── virtio_mmio.c
     └── vmm.c
 ```
@@ -49,6 +52,7 @@ x86 host
 - `src/vmm.c`：KVM VM/vCPU 创建、guest 内存映射、镜像加载、寄存器初始化。
 - `src/main.c`：命令行参数解析、主运行循环、MMIO exit 分发、UART 和 PLIC 模拟。
 - `src/virtio_mmio.c`：modern virtio-mmio 寄存器和 virtqueue 处理。
+- `src/virtio_gpu.c`：virtio-gpu的实现。
 - `src/virtio_blk.c`：virtio-blk 后端，实现对磁盘镜像的 `pread`、`pwrite` 和 `fsync`。
 - `vmm.dts`：内层 guest 使用的设备树。
 - `Makefile`：编译 VMM、生成 DTB、启动外层 QEMU 环境。
@@ -208,6 +212,7 @@ booti ${kernel_addr_r} - ${fdt_addr_r}
 | U-Boot | `0x80200000` | vCPU 入口地址 |
 | UART | `0x10000000` | `ns16550a` |
 | virtio-mmio blk | `0x10001000` | virtio block device |
+| virtio-mmio gpu | `0x10002000` | virtio gpu device |
 | PLIC | `0x0c000000` | 简化 PLIC 模拟 |
 
 virtio-blk 的中断号为 `2`，需要和 `vmm.dts` 中的 `interrupts = <2>;` 保持一致。
@@ -238,6 +243,7 @@ VMM 会打印 virtio-mmio 和 virtio-blk 的关键日志，例如：
 - 只创建一个 vCPU。
 - PLIC 是简化实现，并不完整模拟所有寄存器语义。
 - virtio-mmio/virtio-blk 只实现了当前启动 Linux 所需的基础路径。
+- virtio-gpu只支持2D，并且vmm上没有完整的后端
 - virtio-blk 不支持 discard、write zeroes 等高级请求。
 - 当前项目偏实验用途，不是完整通用 VMM。
 
